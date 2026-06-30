@@ -39,31 +39,49 @@ O algoritmo que implementamos é o de Song, Wagner e Perrig (2000), que foi o pr
 
 ## Como o algoritmo funciona
 
-O esquema tem cinco operações. Aqui estão elas explicadas de forma direta:
+O esquema tem cinco operações. Para cada uma, explicamos o que ela faz e como ela faz.
 
-**KeyGen** gera três chaves secretas que ficam com o usuário:
-- `k_seed`: semente de um gerador pseudo-aleatório
-- `k'`: chave de uma função pseudo-aleatória usada internamente
-- `k''`: chave de uma cifra simétrica usada para pré-cifrar as palavras
+**KeyGen**
 
-**Encrypt** cifra o documento palavra por palavra. Para cada palavra `W_i`, o processo é:
-1. Cifrar a palavra com AES: `X_i = E(k'', W_i)`
-2. Dividir `X_i` em duas metades: `L_i` (64 bits) e `R_i` (64 bits)
-3. Gerar um valor pseudo-aleatório `S_i` a partir de `k_seed`
-4. Calcular `k_i = f(k', L_i)` e `P_i = F(k_i, S_i)`
-5. Montar `T_i = S_i || P_i` e calcular `C_i = X_i XOR T_i`
+Gera as três chaves secretas que ficam com o usuário. Como faz: chama `os.urandom(16)` três vezes, que produz 16 bytes criptograficamente aleatórios para cada chave. Nenhuma das três tem relação com as outras. As chaves nunca saem do lado do usuário.
 
-O `C_i` é o que vai pro servidor. Parece barulho aleatório.
+- `k_seed`: semente do gerador pseudo-aleatório que vai produzir os valores `S_i`
+- `k'`: chave usada internamente para derivar uma chave diferente para cada posição do documento
+- `k''`: chave da cifra simétrica que pré-cifra as palavras antes de tudo
 
-**Trapdoor** gera o token de busca para uma palavra `W` sem revelar `W`:
-- Calcula `X = E(k'', W)` e `k = f(k', X[:8])`
-- Manda o par `(X, k)` pro servidor
+**Encrypt**
 
-**Search** é executado pelo servidor. Para cada bloco `C_i`, ele calcula `V = C_i XOR X` e verifica se os últimos 8 bytes de `V` batem com `F(k, V[:8])`. Se bater, aquela posição é um match.
+Cifra o documento palavra por palavra e manda os blocos resultantes pro servidor. Como faz, para cada palavra `W_i`:
 
-O ponto chave é que essa verificação só funciona quando `W_i == W`, porque só aí o XOR cancela a pré-cifra e deixa a estrutura `(S_i, F(k_i, S_i))` visível. O servidor não precisa saber `W` pra fazer essa conta.
+1. Aplica AES com a chave `k''` na palavra: `X_i = E(k'', W_i)`. Isso transforma a palavra em 16 bytes que parecem aleatórios. É uma cifra determinística: a mesma palavra sempre produz o mesmo `X_i`.
 
-**Decrypt** usa as chaves pra desfazer tudo e recuperar o documento original.
+2. Divide `X_i` ao meio: `L_i` (primeiros 8 bytes) e `R_i` (últimos 8 bytes). O `L_i` vai ser usado pra derivar a chave do bloco.
+
+3. Gera um valor pseudo-aleatório `S_i` a partir de `k_seed` usando AES em modo CTR como gerador. Cada posição `i` do documento recebe um `S_i` diferente. Esse valor é o que garante que a mesma palavra em posições diferentes produce ciphertexts distintos.
+
+4. Calcula `k_i = f(k', L_i)` via HMAC-SHA256. Isso cria uma chave específica pro bloco `i`, derivada do conteúdo cifrado da palavra naquela posição.
+
+5. Calcula `P_i = F(k_i, S_i)` via HMAC-SHA256. Esse é o valor de verificação: um "carimbo" de que `S_i` foi processado com a chave correta do bloco.
+
+6. Monta `T_i = S_i || P_i` (concatenação dos dois) e calcula `C_i = X_i XOR T_i`. O XOR mascara `X_i` com `T_i`, que tem a estrutura especial `(S_i, F(k_i, S_i))` embutida.
+
+O `C_i` resultante é o que vai pro servidor. Parece completamente aleatório.
+
+**Trapdoor**
+
+Gera o token de busca para uma palavra `W` sem revelar a palavra. Como faz: aplica exatamente as mesmas operações do início do Encrypt na palavra buscada, `X = E(k'', W)` e `k = f(k', X[:8])`, mas sem gerar `S_i` nem montar ciphertext. O par `(X, k)` é enviado ao servidor. Com `X`, o servidor consegue cancelar a pré-cifra nos blocos que casam. Com `k`, ele consegue verificar se o resultado tem a estrutura certa. Mas sem `k''`, não tem como recuperar `W` a partir de `X`, porque reverter AES sem a chave é computacionalmente inviável.
+
+**Search**
+
+É executado pelo servidor. Para cada bloco `C_i` do ciphertext, o servidor calcula `V = C_i XOR X` e verifica se os últimos 8 bytes de `V` são iguais a `F(k, V[:8])`.
+
+Por que isso funciona: se a palavra na posição `i` for igual à palavra buscada (`W_i == W`), então `X_i = E(k'', W_i) = E(k'', W) = X`. Aí o XOR cancela: `C_i XOR X = (X_i XOR T_i) XOR X = T_i = S_i || P_i`. O servidor então verifica se `F(k, S_i) == P_i`, o que é verdade porque `k = k_i` quando `W_i == W`. Se a palavra for diferente, o XOR não cancela e `V` vira lixo pseudo-aleatório. A verificação falha com probabilidade `1 - 1/2^64`, ou seja, quase certamente.
+
+O servidor nunca precisa saber `W` pra fazer essa verificação. Só precisa de `(X, k)`.
+
+**Decrypt**
+
+Desfaz a cifragem e recupera o documento original. Como faz: regenera os mesmos valores `S_i` a partir de `k_seed` (o PRG é determinístico, então os valores são idênticos). Com `S_i` em mãos, recupera `L_i = C_i[:8] XOR S_i`, depois recalcula `k_i = f(k', L_i)` e `P_i = F(k_i, S_i)`, e então `R_i = C_i[8:] XOR P_i`. Juntando `L_i || R_i` forma `X_i`, e aplicando AES inverso com `k''` recupera `W_i = E^{-1}(k'', X_i)`. O processo é o inverso exato do Encrypt.
 
 ---
 
@@ -203,7 +221,15 @@ Tem alguns pontos que vale destacar na saída acima para a discussão no relató
 
 ### Experimento 1 - Corretude
 
-Testamos cinco situações para verificar que o código funciona corretamente:
+**O que é:** verificação de que os algoritmos implementados estão corretos em diferentes situações de uso.
+
+**Como funciona:** criamos um documento de 300 palavras escolhidas aleatoriamente de um vocabulário fixo, e inserimos a palavra "target" manualmente nas posições 42, 150 e 275. Depois ciframos o documento e rodamos cinco buscas diferentes, cada uma testando um aspecto do esquema:
+
+- Busca por "target": esperamos receber exatamente as posições [42, 150, 275]
+- Busca por "qwerty" (palavra que não existe): esperamos lista vazia
+- Busca por "cloud" (palavra que aparece muitas vezes): esperamos todas as posições onde ela ocorre
+- Decriptação completa: deciframos o ciphertext e comparamos com o documento original palavra por palavra
+- Trapdoor com chave errada: geramos um segundo par de chaves `K2`, ciframos o mesmo documento com `K2`, e tentamos buscar usando um trapdoor gerado com a chave original `K`. O resultado deve ser vazio, pois sem a chave correta o trapdoor não produz matches válidos
 
 ```
 Caso                                   Esperado               Obtido                 Status
@@ -215,11 +241,13 @@ Decriptacao completa (300 palavras)    igual ao original      igual ao original 
 Chave errada (isolamento de consulta)  []                     []                     OK
 ```
 
-O quinto caso é importante: tentamos usar o trapdoor gerado com uma chave para buscar no ciphertext gerado com outra chave. O resultado é vazio, como esperado. Isso confirma que só o dono das chaves consegue gerar trapdoors válidos.
+Todos os cinco casos passaram. O quinto caso em particular confirma uma propriedade de segurança importante: sem as chaves corretas, não é possível fazer buscas válidas no ciphertext, nem mesmo tendo acesso ao próprio ciphertext.
 
 ### Experimento 2 - Desempenho
 
-Medimos o tempo médio de busca para documentos de tamanhos crescentes:
+**O que é:** verificação empírica de que o tempo de busca cresce linearmente com o tamanho do documento, conforme previsto pela análise de complexidade O(n) do paper.
+
+**Como funciona:** geramos documentos com tamanhos variando de 500 a 50.000 palavras, ciframos cada um e medimos o tempo médio de 5 execuções do algoritmo de busca. Buscamos sempre por uma palavra que não existe no documento, o que força o algoritmo a varrer o documento inteiro sem sair no meio. Isso garante que medimos o custo real de uma busca completa, não de uma busca que encontrou o resultado cedo.
 
 ```
 n =    500 palavras  ->   1.8 ms por busca
@@ -231,15 +259,17 @@ n =  25000 palavras  ->  90.3 ms por busca
 n =  50000 palavras  -> 180.8 ms por busca
 ```
 
-O gráfico abaixo mostra o comportamento:
-
 ![Grafico de desempenho](grafico_desempenho.png)
 
-O tempo cresce de forma perfeitamente linear, confirmando o O(n) que o paper afirma. Dobrar o número de palavras dobra o tempo de busca. Isso faz sentido: o algoritmo de busca percorre todos os blocos uma vez, sem atalhos.
+O comportamento é linear: dobrar o número de palavras dobra o tempo de busca. O crescimento de 500 para 50.000 palavras (fator 100) corresponde a um crescimento de 1.8 ms para 180.8 ms (fator ~100 também). Isso confirma na prática o que o paper demonstra teoricamente.
 
 ### Experimento 3 - Vazamento por frequência de acesso
 
-Esse experimento mostra a principal limitação do esquema. Criamos um documento onde as palavras têm frequências bem diferentes, depois simulamos 300 buscas com probabilidade proporcional a essas frequências, e vimos o que o servidor consegue inferir observando apenas quantas posições são retornadas em cada busca.
+**O que é:** demonstração da principal limitação do esquema. Mesmo sem decifrar nada, um servidor que observa muitas buscas ao longo do tempo consegue inferir quais palavras são mais comuns nos documentos.
+
+**Como funciona:** montamos um vocabulário de 7 palavras com frequências propositalmente diferentes (cloud=40, data=30, secure=20, encrypt=15, search=10, server=6, private=2). Criamos um documento onde cada palavra aparece um número de vezes proporcional a essa frequência, ciframos e simulamos 300 buscas. Cada busca é sorteada com probabilidade proporcional à frequência real das palavras, que é o comportamento esperado num uso normal (o usuário busca mais as palavras que aparecem mais).
+
+O servidor não sabe qual palavra foi buscada em cada consulta. Ele só observa dois dados por busca: o trapdoor `(X, k)` (que parece aleatório) e a lista de posições retornadas. Contabilizamos quantas posições o servidor acumulou por palavra ao longo das 300 buscas e normalizamos pra comparar com a frequência real.
 
 ```
 Palavra      Freq. real  Padrao servidor
@@ -255,7 +285,9 @@ private           1.6%            0.1%
 
 ![Grafico de vazamento](grafico_vazamento.png)
 
-A ordem das palavras por frequência é preservada: o que é mais comum segundo o usuário também aparece com mais frequência no padrão de acesso do servidor. Sem decifrar nada, o servidor já consegue construir um ranking aproximado das palavras mais usadas. Isso é chamado de vazamento por padrão de acesso (*access pattern leakage*) e é a razão principal pela qual pesquisas posteriores desenvolveram esquemas mais sofisticados.
+A ordem das palavras por frequência é preservada nos dois lados: o ranking do servidor (barras vermelhas) reflete o ranking real do usuário (barras azuis). Isso acontece porque palavras mais frequentes aparecem em mais posições do documento, então toda vez que são buscadas retornam mais resultados, o que acumula mais no contador do servidor.
+
+Esse fenômeno é chamado de vazamento por padrão de acesso (*access pattern leakage*). O paper de Song et al. (2000) já reconhece essa limitação na Seção 5.5. Foi principalmente por causa dela que a área continuou evoluindo: esquemas mais recentes, como o de Curtmola et al. (2006), usam índices cifrados que ocultam esse padrão, mas com overhead maior de armazenamento.
 
 ---
 
