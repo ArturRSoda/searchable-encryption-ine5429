@@ -1,8 +1,6 @@
-# Mini-exemplo concreto — gera valores de entrada/saída para o relatório
-#
-# Executa cada algoritmo do esquema de Song et al. (2000) sobre um
-# documento pequeno e imprime os valores intermediários em hexadecimal,
-# para uso como exemplo concreto na seção de Desenvolvimento do relatório.
+# Mini-exemplo concreto para o relatorio
+# Roda os algoritmos do esquema de Song et al. (2000) em um documento pequeno
+# e mostra os valores intermediarios em hexadecimal.
 
 import sys
 import os
@@ -131,9 +129,44 @@ def main():
             all_ok = False
         print(f"  posição {idx}: \"{rec}\"  [{status}]")
 
+    # ------------------------------------------------------------------
+    # Sigilo provavel: mesma palavra, ciphertexts diferentes
+    # ------------------------------------------------------------------
+    print(f"\n{SEP}")
+    print('Sigilo provavel: "the" aparece nas posicoes 0 e 4')
+    print(SEP)
+
+    the_positions = [i for i, w in enumerate(document) if w == "the"]
+    print(f'  "the" esta nas posicoes: {the_positions}')
+    print()
+    for pos in the_positions:
+        print(f"  C[{pos}]  = {h(C[pos])}")
+
+    iguais = C[the_positions[0]] == C[the_positions[1]]
+    print(f"\n  Os dois ciphertexts sao iguais? {iguais}")
+    print()
+    print("  Mesmo que a palavra seja identica, cada posicao recebe um valor")
+    print("  S_i diferente gerado pelo PRG. O resultado e que o servidor ve")
+    print("  dois blocos completamente distintos e nao tem como saber que")
+    print("  ambos correspondem a mesma palavra.")
+
+    # ------------------------------------------------------------------
+    # Consulta oculta: o que o servidor ve no trapdoor
+    # ------------------------------------------------------------------
+    print(f"\n{SEP}")
+    print('Consulta oculta: o que o servidor recebe ao buscar "cat"')
+    print(SEP)
+    print(f"  X  = {h(X_trap)}")
+    print(f"  k  = {h(k_trap)}")
+    print()
+    print('  O servidor recebe apenas esses dois valores. Sem a chave k\'\'')
+    print('  e impossivel recuperar "cat" a partir de X, pois X = E(k\'\', "cat")')
+    print("  e AES sem a chave e computacionalmente inviavelmente de reverter.")
+    print("  O servidor so consegue verificar se um bloco casa, nao o que foi buscado.")
+
     print(f"\n{SEP}")
     if all_ok:
-        print("Resultado: todos os algoritmos funcionaram corretamente.")
+        print("Todos os algoritmos funcionaram corretamente.")
     else:
         print("ERRO: algum algoritmo produziu resultado incorreto.")
     print(SEP)
