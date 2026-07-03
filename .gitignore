@@ -20,3 +20,6 @@ relatorio/*.fls
 relatorio/*.fdb_latexmk
 relatorio/*.synctex.gz
 relatorio/_minted*/
+
+# Relatório LaTeX (mantido localmente, publicado no Overleaf)
+relatorio/
