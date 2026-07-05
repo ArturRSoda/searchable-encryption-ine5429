@@ -1,8 +1,8 @@
 # Experimentos: corretude, desempenho e vazamento por frequência de acesso
 #
 # Gera dois arquivos PNG na raiz do projeto:
-#   grafico_desempenho.png  — tempo de busca × tamanho do documento
-#   grafico_vazamento.png   — frequência real × padrão de acesso do servidor
+#   grafico_desempenho.png  : tempo de busca vs. tamanho do documento
+#   grafico_vazamento.png   : frequência real vs. padrão de acesso do servidor
 
 import sys
 import os
@@ -11,6 +11,7 @@ import string
 import time
 
 import matplotlib
+
 matplotlib.use("Agg")  # modo sem janela (headless)
 import matplotlib.pyplot as plt
 
@@ -18,24 +19,26 @@ sys.path.insert(0, os.path.dirname(__file__))
 from sse import keygen, encrypt, trapdoor, search, decrypt
 
 # Pasta raiz do projeto (um nível acima de src/)
-ROOT = os.path.join(os.path.dirname(__file__), "..")
+ROOT_DIR = os.path.join(os.path.dirname(__file__), "..")
 
 
 # ---------------------------------------------------------------------------
 # Utilitários
 # ---------------------------------------------------------------------------
 
+
 def random_word(length: int = 8) -> str:
     return "".join(random.choices(string.ascii_lowercase, k=length))
 
 
 # ---------------------------------------------------------------------------
-# Experimento 1 — Corretude
+# Experimento 1 - Corretude
 # ---------------------------------------------------------------------------
+
 
 def experiment_correctness():
     print("=" * 60)
-    print("Experimento 1 — Corretude")
+    print("Experimento 1 - Corretude")
     print("=" * 60)
 
     K = keygen()
@@ -52,36 +55,54 @@ def experiment_correctness():
 
     results = []
 
-    # Caso 1: palavra que existe em posições conhecidas
+    # Caso 1: palavra que existe em posições conhecidas.
     found = search(C, trapdoor(K, "target"))
     expected_set = set(target_positions)
     # Todas as posições conhecidas devem estar no resultado
     # (pode haver falsos positivos, mas com m=64 a probabilidade é negligível)
     ok1 = expected_set.issubset(set(found))
-    results.append(("\"target\" (existe, 3 ocorrências)", str(target_positions), str(found), ok1))
+    results.append(
+        ('"target" (existe, 3 ocorrências)', str(target_positions), str(found), ok1)
+    )
 
-    # Caso 2: palavra que não existe
+    # Caso 2: palavra que não existe.
     found_none = search(C, trapdoor(K, "qwerty"))
-    ok2 = (found_none == [])
-    results.append(("\"qwerty\" (não existe)", "[]", str(found_none), ok2))
+    ok2 = found_none == []
+    results.append(('"qwerty" (não existe)', "[]", str(found_none), ok2))
 
-    # Caso 3: palavra do vocabulário — verificar que encontra pelo menos uma ocorrência
+    # Caso 3: palavra do vocabulário. Verificar que encontra pelo menos uma ocorrência.
     found_cloud = search(C, trapdoor(K, "cloud"))
     real_cloud = [i for i, w in enumerate(document) if w == "cloud"]
     ok3 = set(real_cloud).issubset(set(found_cloud))
-    results.append(("\"cloud\" (múltiplas ocorrências)", str(real_cloud[:5]) + "...", str(found_cloud[:5]) + "...", ok3))
+    results.append(
+        (
+            '"cloud" (múltiplas ocorrências)',
+            str(real_cloud[:5]) + "...",
+            str(found_cloud[:5]) + "...",
+            ok3,
+        )
+    )
 
     # Caso 4: decriptação completa
     recovered = decrypt(K, C)
-    ok4 = (recovered == document)
-    results.append(("Decriptação completa (300 palavras)", "igual ao original", "igual ao original" if ok4 else "DIFERENTE", ok4))
+    ok4 = recovered == document
+    results.append(
+        (
+            "Decriptação completa (300 palavras)",
+            "igual ao original",
+            "igual ao original" if ok4 else "DIFERENTE",
+            ok4,
+        )
+    )
 
     # Caso 5: trapdoor de uma chave não encontra nada em ciphertext de outra
     K2 = keygen()
     C2 = encrypt(K2, document)
     found_cross = search(C2, trapdoor(K, "target"))
-    ok5 = (found_cross == [])
-    results.append(("Chave errada (isolamento de consulta)", "[]", str(found_cross), ok5))
+    ok5 = found_cross == []
+    results.append(
+        ("Chave errada (isolamento de consulta)", "[]", str(found_cross), ok5)
+    )
 
     # Exibir tabela
     col_w = [38, 22, 22, 8]
@@ -105,12 +126,13 @@ def experiment_correctness():
 
 
 # ---------------------------------------------------------------------------
-# Experimento 2 — Desempenho (tempo linear)
+# Experimento 2 - Desempenho (tempo linear)
 # ---------------------------------------------------------------------------
+
 
 def experiment_performance():
     print("=" * 60)
-    print("Experimento 2 — Desempenho")
+    print("Experimento 2 - Desempenho")
     print("=" * 60)
 
     K = keygen()
@@ -121,7 +143,9 @@ def experiment_performance():
     for n in sizes:
         doc = [random_word() for _ in range(n)]
         C = encrypt(K, doc)
-        trap = trapdoor(K, "nothere")  # palavra ausente → percorre o documento inteiro
+        trap = trapdoor(
+            K, "nothere"
+        )  # palavra ausente, então percorre o documento inteiro
 
         t0 = time.perf_counter()
         for _ in range(repetitions):
@@ -130,30 +154,31 @@ def experiment_performance():
 
         avg_ms = (t1 - t0) / repetitions * 1000
         times_ms.append(avg_ms)
-        print(f"  n = {n:>6} palavras  →  {avg_ms:.1f} ms por busca")
+        print(f"  n = {n:>6} palavras  ->  {avg_ms:.1f} ms por busca")
 
     # Gráfico
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.plot(sizes, times_ms, marker="o", linewidth=2, color="steelblue")
     ax.set_xlabel("Número de palavras no documento")
     ax.set_ylabel("Tempo médio de busca (ms)")
-    ax.set_title("Desempenho da busca — Song et al. (2000)\n(varredura sequencial, comportamento O(n))")
+    ax.set_title("Desempenho da busca\n(varredura sequencial, comportamento O(n))")
     ax.grid(True, linestyle="--", alpha=0.6)
     plt.tight_layout()
 
-    out = os.path.join(ROOT, "grafico_desempenho.png")
+    out = os.path.join(ROOT_DIR, "grafico_desempenho.png")
     plt.savefig(out, dpi=150)
     plt.close()
     print(f"\nGráfico salvo em: grafico_desempenho.png\n")
 
 
 # ---------------------------------------------------------------------------
-# Experimento 3 — Vazamento por frequência de acesso
+# Experimento 3 - Vazamento por frequência de acesso
 # ---------------------------------------------------------------------------
+
 
 def experiment_leakage():
     print("=" * 60)
-    print("Experimento 3 — Vazamento por frequência de acesso")
+    print("Experimento 3 - Vazamento por frequência de acesso")
     print("=" * 60)
 
     K = keygen()
@@ -161,13 +186,13 @@ def experiment_leakage():
     # Vocabulário com frequências intencionalmente desiguais
     # (simula um documento real onde algumas palavras são muito mais comuns)
     vocab_freq = {
-        "cloud":    40,
-        "data":     30,
-        "secure":   20,
-        "encrypt":  15,
-        "search":   10,
-        "server":    6,
-        "private":   2,
+        "cloud": 40,
+        "data": 30,
+        "secure": 20,
+        "encrypt": 15,
+        "search": 10,
+        "server": 6,
+        "private": 2,
     }
 
     # Construir documento com distribuição proporcional às frequências
@@ -181,7 +206,7 @@ def experiment_leakage():
     words = list(vocab_freq.keys())
     weights = list(vocab_freq.values())
 
-    # O servidor não sabe as palavras — apenas conta posições retornadas por busca
+    # O servidor não sabe as palavras, apenas conta posições retornadas por busca
     # (honest-but-curious: segue o protocolo, mas analisa o que recebe)
     server_hits = {w: 0 for w in words}
 
@@ -196,10 +221,10 @@ def experiment_leakage():
 
     # Normalizar para frequência relativa
     total_real = sum(vocab_freq.values())
-    total_obs  = sum(server_hits.values()) or 1
+    total_obs = sum(server_hits.values()) or 1
 
     freq_real = [vocab_freq[w] / total_real for w in words]
-    freq_obs  = [server_hits[w]  / total_obs  for w in words]
+    freq_obs = [server_hits[w] / total_obs for w in words]
 
     print(f"\n  {'Palavra':<10} {'Freq. real':>12} {'Padrão servidor':>16}")
     print("  " + "-" * 40)
@@ -209,22 +234,32 @@ def experiment_leakage():
     # Gráfico de barras lado a lado
     x = range(len(words))
     fig, ax = plt.subplots(figsize=(10, 5))
-    bars1 = ax.bar([i - 0.2 for i in x], freq_real, width=0.38,
-                   label="Frequência real (usuário)", color="steelblue")
-    bars2 = ax.bar([i + 0.2 for i in x], freq_obs,  width=0.38,
-                   label="Padrão de acesso (servidor)", color="tomato")
+    bars1 = ax.bar(
+        [i - 0.2 for i in x],
+        freq_real,
+        width=0.38,
+        label="Frequência real (usuário)",
+        color="steelblue",
+    )
+    bars2 = ax.bar(
+        [i + 0.2 for i in x],
+        freq_obs,
+        width=0.38,
+        label="Padrão de acesso (servidor)",
+        color="tomato",
+    )
     ax.set_xticks(list(x))
     ax.set_xticklabels(words)
     ax.set_ylabel("Frequência relativa")
     ax.set_title(
-        "Vazamento por frequência de acesso — Song et al. (2000)\n"
+        "Vazamento por frequência de acesso\n"
         "(servidor honest-but-curious infere frequências sem decifrar os dados)"
     )
     ax.legend()
     ax.grid(axis="y", linestyle="--", alpha=0.6)
     plt.tight_layout()
 
-    out = os.path.join(ROOT, "grafico_vazamento.png")
+    out = os.path.join(ROOT_DIR, "grafico_vazamento.png")
     plt.savefig(out, dpi=150)
     plt.close()
     print(f"\nGráfico salvo em: grafico_vazamento.png\n")

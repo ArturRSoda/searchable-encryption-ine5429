@@ -1,31 +1,43 @@
-# Mini-exemplo concreto para o relatorio
+# Mini-exemplo concreto para o relatório
 # Roda os algoritmos do esquema de Song et al. (2000) em um documento pequeno
-# e mostra os valores intermediarios em hexadecimal.
+# e mostra os valores intermediários em hexadecimal.
 
 import sys
 import os
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from sse import (
-    keygen, encrypt, trapdoor, search, decrypt,
-    pad_word, unpad_word,
-    _aes_ecb_encrypt, _prf_f, _prf_F, _prg,
-    N_BYTES, M_BYTES, L_BYTES,
+    keygen,
+    encrypt,
+    trapdoor,
+    search,
+    decrypt,
+    pad_word,
+    _aes_ecb_encrypt,
+    _prf_f,
+    _prf_F,
+    _prg,
+    N_BYTES,
+    M_BYTES,
+    L_BYTES,
 )
 
 SEP = "=" * 62
 
+
 def h(b: bytes) -> str:
     """Formata bytes como hex com espaços a cada 8 bytes para legibilidade."""
+
     s = b.hex()
-    return " ".join(s[i:i+16] for i in range(0, len(s), 16))
+    return " ".join(s[i : i + 16] for i in range(0, len(s), 16))
 
 
 def main():
     document = ["the", "cat", "sat", "on", "the", "mat"]
 
     print(SEP)
-    print("Mini-exemplo — Searchable Encryption (Song et al., 2000)")
+    print("Mini-exemplo de Searchable Encryption (Song et al., 2000)")
     print(SEP)
     print(f"\nDocumento de entrada: {document}")
     print(f"Parâmetros: n={N_BYTES*8} bits, m={M_BYTES*8} bits, L={L_BYTES*8} bits\n")
@@ -43,10 +55,10 @@ def main():
     print(f"  k''     (E)    = {h(k_doubleprime)}")
 
     # ------------------------------------------------------------------
-    # Encrypt — passo a passo para a palavra "cat" (índice 1)
+    # Encrypt para a palavra "cat" (índice 1)
     # ------------------------------------------------------------------
     print(f"\n{SEP}")
-    print('Encrypt — passo a passo para a palavra "cat" (posição 1)')
+    print('Encrypt para a palavra "cat" (posição 1)')
     print(SEP)
 
     word = "cat"
@@ -63,7 +75,7 @@ def main():
     C_i = bytes(a ^ b for a, b in zip(X_i, T_i))
 
     print(f"  W_{i}  (plaintext, com padding)  = {h(W_i)}")
-    print(f"       (\"{word}\" + {N_BYTES - len(word.encode())} bytes \\x00)")
+    print(f'       ("{word}" + {N_BYTES - len(word.encode())} bytes \\x00)')
     print(f"\n  X_{i}  = E(k'', W_{i})            = {h(X_i)}")
     print(f"  L_{i}  = X_{i}[:{L_BYTES}]                  = {h(L_i)}")
     print(f"  R_{i}  = X_{i}[{L_BYTES}:]                  = {h(R_i)}")
@@ -76,30 +88,30 @@ def main():
 
     # Todos os blocos cifrados
     print(f"\n{SEP}")
-    print("Encrypt — todos os blocos do documento")
+    print("Encrypt com todos os blocos do documento")
     print(SEP)
     C = encrypt(K, document)
     for idx, (w, block) in enumerate(zip(document, C)):
-        print(f"  C[{idx}]  \"{w:3}\"  →  {h(block)}")
+        print(f'  C[{idx}]  "{w:3}"  ->  {h(block)}')
 
     # ------------------------------------------------------------------
     # Trapdoor
     # ------------------------------------------------------------------
     print(f"\n{SEP}")
-    print('Trapdoor — gera token de busca para "cat" (enviado ao servidor)')
+    print('Trapdoor: gera token de busca para "cat" (enviado ao servidor)')
     print(SEP)
     trap_cat = trapdoor(K, "cat")
     X_trap, k_trap = trap_cat
     print(f"  X  = E(k'', \"cat\")  = {h(X_trap)}")
     print(f"  k  = f(k', X[:{L_BYTES}])  = {h(k_trap)}")
     print(f"  Token enviado ao servidor: (X, k)")
-    print(f"  O servidor recebe (X, k) sem saber que a palavra buscada é \"cat\"")
+    print(f'  O servidor recebe (X, k) sem saber que a palavra buscada é "cat"')
 
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------
     print(f"\n{SEP}")
-    print("Search — servidor varre o ciphertext")
+    print("Search: servidor varre o ciphertext")
     print(SEP)
 
     queries = [
@@ -114,40 +126,42 @@ def main():
         status = "OK" if pos == expected else "FALHOU"
         if pos != expected:
             all_ok = False
-        print(f"  Busca \"{word_q:3}\"  →  posições {pos}  (esperado {expected})  [{status}]")
+        print(
+            f'  Busca "{word_q:3}"  ->  posições {pos}  (esperado {expected})  [{status}]'
+        )
 
     # ------------------------------------------------------------------
     # Decrypt
     # ------------------------------------------------------------------
     print(f"\n{SEP}")
-    print("Decrypt — usuário recupera o documento original")
+    print("Decrypt: usuário recupera o documento original")
     print(SEP)
     recovered = decrypt(K, C)
     for idx, (original, rec) in enumerate(zip(document, recovered)):
         status = "OK" if original == rec else "FALHOU"
         if original != rec:
             all_ok = False
-        print(f"  posição {idx}: \"{rec}\"  [{status}]")
+        print(f'  posição {idx}: "{rec}"  [{status}]')
 
     # ------------------------------------------------------------------
     # Sigilo provavel: mesma palavra, ciphertexts diferentes
     # ------------------------------------------------------------------
     print(f"\n{SEP}")
-    print('Sigilo provavel: "the" aparece nas posicoes 0 e 4')
+    print('Sigilo provável: "the" aparece nas posições 0 e 4')
     print(SEP)
 
     the_positions = [i for i, w in enumerate(document) if w == "the"]
-    print(f'  "the" esta nas posicoes: {the_positions}')
+    print(f'  "the" esta nas posições: {the_positions}')
     print()
     for pos in the_positions:
         print(f"  C[{pos}]  = {h(C[pos])}")
 
     iguais = C[the_positions[0]] == C[the_positions[1]]
-    print(f"\n  Os dois ciphertexts sao iguais? {iguais}")
+    print(f"\n  Os dois ciphertexts são iguais? {iguais}")
     print()
-    print("  Mesmo que a palavra seja identica, cada posicao recebe um valor")
-    print("  S_i diferente gerado pelo PRG. O resultado e que o servidor ve")
-    print("  dois blocos completamente distintos e nao tem como saber que")
+    print("  Mesmo que a palavra seja idêntica, cada posição recebe um valor")
+    print("  S_i diferente gerado pelo PRG. O resultado é que o servidor ve")
+    print("  dois blocos completamente distintos e não tem como saber que")
     print("  ambos correspondem a mesma palavra.")
 
     # ------------------------------------------------------------------
@@ -159,10 +173,10 @@ def main():
     print(f"  X  = {h(X_trap)}")
     print(f"  k  = {h(k_trap)}")
     print()
-    print('  O servidor recebe apenas esses dois valores. Sem a chave k\'\'')
-    print('  e impossivel recuperar "cat" a partir de X, pois X = E(k\'\', "cat")')
-    print("  e AES sem a chave e computacionalmente inviavelmente de reverter.")
-    print("  O servidor so consegue verificar se um bloco casa, nao o que foi buscado.")
+    print("  O servidor recebe apenas esses dois valores. Sem a chave k''")
+    print('  é impossivel recuperar "cat" a partir de X, pois X = E(k\'\', "cat")')
+    print("  e AES sem a chave é computacionalmente inviável de reverter.")
+    print("  O servidor só consegue verificar se um bloco casa, não o que foi buscado.")
 
     print(f"\n{SEP}")
     if all_ok:
