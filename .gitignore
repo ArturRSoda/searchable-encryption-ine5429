@@ -2,10 +2,6 @@
 __pycache__/
 *.py[cod]
 
-# HTML e PDF gerados
-*.html
-*.pdf
-
 # Artefatos de compilação LaTeX
 relatorio/*.aux
 relatorio/*.log

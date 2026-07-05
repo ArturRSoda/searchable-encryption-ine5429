@@ -1,6 +1,6 @@
-# Searchable Encryption — INE5429
+# Searchable Encryption (INE5429)
 
-Implementação do esquema de busca em dados cifrados proposto por Song, Wagner e Perrig (2000), desenvolvido como trabalho da disciplina INE5429 — Segurança em Computação da UFSC.
+Implementação do esquema de busca em dados cifrados proposto por Song, Wagner e Perrig (2000), desenvolvido como trabalho da disciplina INE5429 (Segurança em Computação) da UFSC.
 
 ## Integrantes
 
@@ -46,5 +46,5 @@ python src/experiments.py
 ```
 
 Os gráficos serão salvos na pasta raiz do projeto:
-- `grafico_desempenho.png` — tempo de busca × tamanho do documento
-- `grafico_vazamento.png` — frequência real × padrão de acesso observado pelo servidor
+- `grafico_desempenho.png`: tempo de busca vs. tamanho do documento
+- `grafico_vazamento.png`: frequência real vs. padrão de acesso observado pelo servidor
